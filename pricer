@@ -1,0 +1,63 @@
+import math
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+
+# Configuration
+S1 = 30
+S2 = 50
+RATE = 0.06
+MATURITY = 5
+STRIKE = 0
+SIGMA_1 = 0.1
+SIGMA_2 = 0.1
+RHO = 0
+SAMPLE_SIZE = 50000
+
+
+# Kirk
+def Kirk_Pricer(s1, s2, r, sigma1, sigma2, rho, t, k):
+    df = math.exp(-r*t)
+    sigma = math.sqrt(sigma1 ** 2 + sigma2 ** 2 * (S2 / (S2 + STRIKE * math.exp(-RATE * MATURITY))) ** 2 - 2 * rho * sigma1 * sigma2 * (S2 / (S2 + STRIKE * math.exp(-RATE * MATURITY))))
+
+    d_1 = (np.log(s1/(s2 + k*df)) + 0.5 * sigma**2 * t)/(sigma * math.sqrt(MATURITY))
+    d_2 = (np.log(s1/(s2 + k*df)) - 0.5 * sigma**2 * t)/(sigma * math.sqrt(MATURITY))
+
+    price = S1*stats.norm.cdf(d_1) - (S2 + STRIKE*math.exp(-RATE*MATURITY))*stats.norm.cdf(d_2)
+
+    return price
+
+
+def time_pass(seed, x, dt, rate, vol):
+    St = x * math.exp((rate - vol ** 2 / 2) * dt + vol * seed * math.sqrt(dt))
+    return St
+
+
+def gen_rv(rho, size):
+    mu = np.array([0, 0])
+    cov = np.array([[1, rho], [rho, 1]])
+    rng = np.random.default_rng()
+    seeds = rng.multivariate_normal(mu, cov, size=size)
+    return seeds
+
+
+# Monte-Carlo
+def MC_pricer(s1, s2, r, sigma1, sigma2, rho, t, k, path_size):
+    seeds = gen_rv(rho, path_size)
+    discount_factor = math.exp(-r*t)
+    df = pd.DataFrame(seeds, columns=["Seed_S1", "Seed_S2"])
+
+    df["S1"] = df["Seed_S1"].apply(time_pass, x=s1, dt=t, rate=r, vol=sigma1)
+    df["S2"] = df["Seed_S2"].apply(time_pass, x=s2, dt=t, rate=r, vol=sigma2)
+
+    df["Payoff"] = df["S1"] - df["S2"]
+    df["Payoff"] = df["Payoff"].apply(lambda x: max(x-k, 0))
+
+    price = df["Payoff"].mean()*discount_factor
+
+    return price
+
+
+print(Kirk_Pricer(S1, S2, RATE, SIGMA_1, SIGMA_2, RHO, MATURITY, STRIKE))
+print(MC_pricer(S1, S2, RATE, SIGMA_1, SIGMA_2, RHO, MATURITY, STRIKE, SAMPLE_SIZE))
